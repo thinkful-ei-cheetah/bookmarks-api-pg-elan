@@ -1,8 +1,9 @@
 const express = require('express')
 const { isWebUri } = require('valid-url')
+const path = require('path')
 const xss = require('xss')
 const logger = require('../logger')
-const BookarksService = require('./bookmarks-service')
+const BookmarksService = require('./bookmarks-service')
 
 const bookmarksRouter = express.Router()
 const bodyParser = express.json()
@@ -18,7 +19,7 @@ const serializeBookmark = bookmark => ({
 bookmarksRouter
   .route('/bookmarks')
   .get((req, res, next) => {
-    BookarksService.getAllBookmarks(req.app.get('db'))
+    BookmarksService.getAllBookmarks(req.app.get('db'))
       .then(bookmarks => {
         res.json(bookmarks.map(serializeBookmark))
       })
@@ -46,7 +47,7 @@ bookmarksRouter
 
     const newBookmark = { title, url, description, rating }
 
-    BookarksService.insertBookmark(
+    BookmarksService.insertBookmark(
       req.app.get('db'),
       newBookmark
     )
@@ -54,7 +55,7 @@ bookmarksRouter
         logger.info(`Card with id ${bookmark.id} created.`)
         res
           .status(201)
-          .location(`/bookmarks/${bookmark.id}`)
+          .location(path.posix.join(req.originalUrl, `/${bookmark.id}`))
           .json(serializeBookmark(bookmark))
       })
       .catch(next)
@@ -64,7 +65,7 @@ bookmarksRouter
   .route('/bookmarks/:bookmark_id')
   .all((req, res, next) => {
     const { bookmark_id } = req.params
-    BookarksService.getById(req.app.get('db'), bookmark_id)
+    BookmarksService.getById(req.app.get('db'), bookmark_id)
       .then(bookmark => {
         if (!bookmark) {
           logger.error(`Bookmark with id ${bookmark_id} not found.`)
@@ -84,12 +85,35 @@ bookmarksRouter
   .delete((req, res, next) => {
     // TODO: update to use db
     const { bookmark_id } = req.params
-    BookarksService.deleteBookmark(
+    BookmarksService.deleteBookmark(
       req.app.get('db'),
       bookmark_id
     )
       .then(numRowsAffected => {
         logger.info(`Card with id ${bookmark_id} deleted.`)
+        res.status(204).end()
+      })
+      .catch(next)
+  })
+  .patch(bodyParser, (req, res, next) => {
+    const { title, url, description, rating } = req.body
+    const bookmarkToUpdate = { title, url, description, rating }
+
+    const numberOfValues = Object.values(bookmarkToUpdate).filter(Boolean).length
+    if(numberOfValues === 0) {
+      return res.status(400).json({
+        error: {
+          message: `Request body must contain 'title', 'url', 'description', 'rating'`
+        }
+      })
+    }
+
+    BookmarksService.updateBookmark(
+      req.app.get('db'),
+      req.params.bookmark_id,
+      bookmarkToUpdate
+    )
+      .then(numRowsAffected => {
         res.status(204).end()
       })
       .catch(next)
